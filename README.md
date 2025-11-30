@@ -183,6 +183,6 @@ pip install transformers torch h5py tqdm numpy
 
 ## References
 
-- **Paris**: Hierarchical graph clustering via Fitch distances
+- **Paris**: Hierarchical graph clustering optimizing modularity
 - **IKC**: Iterative k-core based community detection
 - **MedCPT**: Medical domain-specific contrastive pre-trained transformer
