@@ -13,6 +13,8 @@ import numpy as np
 import argparse
 from typing import Dict, Any
 import ikc
+from os import system
+import pandas as pd
 
 
 def load_metadata(metadata_file: str) -> Dict[str, Dict[str, str]]:
@@ -109,7 +111,8 @@ def cosine_similarity(vec1: np.ndarray, vec2: np.ndarray) -> float:
 def hierarchical_search(query_embedding: np.ndarray,
                        root: Dict[str, Any],
                        embeddings: Dict[int, np.ndarray],
-                       verbose: bool = True) -> Dict[str, Any]:
+                       verbose: bool = True,
+                       wcc: bool = False) -> Dict[str, Any]:
     """
     Navigate down the tree selecting the child with highest cosine similarity
     at each level until reaching a leaf node.
@@ -181,6 +184,8 @@ def main():
                        help='Data directory (default: data)')
     parser.add_argument('--quiet', action='store_true',
                        help='Suppress progress output')
+    parser.add_argument('--wcc', action='store_true',
+                       help='Well connected components mode')
 
     args = parser.parse_args()
 
@@ -194,9 +199,13 @@ def main():
     network_file_tsv = os.path.join(data_dir, 'network/oc_mini_edgelist.tsv')
 
     verbose = not args.quiet
+    wcc = args.wcc
 
     if verbose:
         print("Loading data...")
+
+    # Load graph
+    g = ikc.load_graph(network_file_tsv)
 
     # Load all data
     metadata = load_metadata(metadata_file)
@@ -241,8 +250,7 @@ def main():
 
     # Load IKC and network data
     if verbose:
-        print("\nLoading IKC and network data...")
-    g = ikc.load_graph(network_file_tsv)
+        print("\nComputing IKC...")
     kcore = g.compute_kcore_decomposition()
 
     if verbose:
@@ -252,6 +260,64 @@ def main():
 
     community = g.find_maximal_kcore(int(final_node['id']), core_numbers=kcore.core_numbers)
     
+    if wcc and community:
+        if verbose:
+            print("  Refining community using well connected components...")
+            print("  Computing induced subgraph...")
+
+        # Filter edges to community nodes and write to temp file
+        community_nodes_set = set(community['nodes'])
+        temp_subgraph_file = 'temp_subgraph.tsv'
+        temp_cluster_file = 'temp_cluster.tsv'
+        edge_count = 0
+
+        with open(network_file_tsv, 'r') as fin, open(temp_subgraph_file, 'w') as fout:
+            for line in fin:
+                parts = line.strip().split('\t')
+                if len(parts) == 2:
+                    u, v = int(parts[0]), int(parts[1])
+                    if u in community_nodes_set and v in community_nodes_set:
+                        fout.write(f"{u}\t{v}\n")
+                        edge_count += 1
+
+        with open(temp_cluster_file, 'w') as fcluster:
+            for node_id in community['nodes']:
+                fcluster.write(f"{node_id}\t1\n")
+
+        if verbose:
+            print(f"  Induced subgraph has {len(community['nodes'])} nodes and {edge_count} edges")
+            print(f"  Saved to {temp_subgraph_file}")
+            print("  Running well connected components algorithm...")
+
+        system(f"python3 -m hm01.cm -i {temp_subgraph_file} -e {temp_cluster_file} -c nop -t 1log10 -o wcc_output.tsv -n 4")
+
+        # Read WCC output
+        wcc_output = pd.read_csv('wcc_output.tsv', sep='\t', header=None, names=['node_id', 'cluster_id'])
+
+        # Get the cluster ID of the original node
+        original_node_id = int(final_node['name'])
+        original_cluster_id = wcc_output.loc[wcc_output['node_id'] == original_node_id, 'cluster_id'].values
+        
+        # Get a set of nodes in the same cluster
+        if len(original_cluster_id) > 0:
+            original_cluster_id = original_cluster_id[0]
+            wcc_nodes = set(wcc_output.loc[wcc_output['cluster_id'] == original_cluster_id, 'node_id'].tolist())
+
+            # Update community to WCC nodes
+            community['nodes'] = [node_id for node_id in community['nodes'] if node_id in wcc_nodes]
+
+            if verbose:
+                print(f"  WCC refined community size: {len(community['nodes'])}")
+        else:
+            if verbose:
+                print(f"  Original node {original_node_id} not found in WCC output. Community remains unchanged.")
+
+        # Clean up temp files
+        os.remove(temp_subgraph_file)
+        os.remove(temp_cluster_file)
+        system('rm wcc_output*')
+
+
     # print(community)
     if community:
         print(f"\nCommunity for node {final_node['id']} (k={community['k']}):")

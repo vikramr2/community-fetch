@@ -158,13 +158,17 @@ def visualize_community(
 
     # Compute cosine similarities for all nodes in community
     similarities = {}
+    log_similarities = {}
     for node_id in community_nodes:
         if node_id in embeddings:
             node_embedding = embeddings[node_id]
             sim = cosine_similarity(query_embedding, node_embedding)
             similarities[node_id] = sim
+            # Use log scale for better color distribution
+            log_similarities[node_id] = np.log10(sim + 1e-10)  # Add small epsilon to avoid log(0)
         else:
             similarities[node_id] = 0.0
+            log_similarities[node_id] = -10.0
 
     # Prepare edge trace
     edge_x = []
@@ -202,21 +206,46 @@ def visualize_community(
             'doi': ''
         })
 
-        # Create hover text
-        title = meta['title'][:100] + '...' if len(meta['title']) > 100 else meta['title']
-        abstract = meta['abstract'][:300] + '...' if len(meta['abstract']) > 300 else meta['abstract']
+        # Create hover text with proper line wrapping
+        title = meta['title']
+        abstract = meta['abstract']
         doi = meta['doi']
         sim = similarities[node_id]
+
+        # Wrap text to reasonable width (about 60 characters per line)
+        def wrap_text(text, width=60):
+            words = text.split()
+            lines = []
+            current_line = []
+            current_length = 0
+
+            for word in words:
+                if current_length + len(word) + 1 <= width:
+                    current_line.append(word)
+                    current_length += len(word) + 1
+                else:
+                    if current_line:
+                        lines.append(' '.join(current_line))
+                    current_line = [word]
+                    current_length = len(word)
+
+            if current_line:
+                lines.append(' '.join(current_line))
+
+            return '<br>'.join(lines)
+
+        title_wrapped = wrap_text(title, 50)
+        abstract_wrapped = wrap_text(abstract, 50)
 
         hover_text = (
             f"<b>Node ID:</b> {node_id}<br>"
             f"<b>Cosine Similarity:</b> {sim:.4f}<br>"
-            f"<b>Title:</b> {title}<br>"
-            f"<b>Abstract:</b> {abstract}<br>"
+            f"<b>Title:</b><br>{title_wrapped}<br>"
+            f"<b>Abstract:</b><br>{abstract_wrapped}<br>"
             f"<b>DOI:</b> {doi}"
         )
         node_text.append(hover_text)
-        node_color.append(sim)
+        node_color.append(log_similarities[node_id])
 
     node_trace = go.Scatter(
         x=node_x,
@@ -224,6 +253,13 @@ def visualize_community(
         mode='markers',
         hoverinfo='text',
         text=node_text,
+        hoverlabel=dict(
+            bgcolor="white",
+            font_size=11,
+            font_family="monospace",
+            align="left",
+            namelength=0
+        ),
         marker=dict(
             showscale=True,
             colorscale='Viridis',
@@ -231,7 +267,7 @@ def visualize_community(
             size=10,
             colorbar=dict(
                 thickness=15,
-                title='Cosine Similarity',
+                title='log₁₀(Cosine Sim)',
                 xanchor='left',
                 titleside='right'
             ),
@@ -262,7 +298,7 @@ def visualize_community(
     # Add bottom annotation about colors
     annotations.append(
         dict(
-            text="Node colors represent cosine similarity to query embedding",
+            text="Node colors represent log₁₀(cosine similarity) to query embedding",
             showarrow=False,
             xref="paper",
             yref="paper",

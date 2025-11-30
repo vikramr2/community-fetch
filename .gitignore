@@ -1,11 +1,11 @@
-*_slurm.sh
-*.json
-*.html
-
 # Output files
 *.out
 *.log
 *.err
+*_slurm.sh
+*.json
+*.html
+*.tsv
 
 data
 
