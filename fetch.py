@@ -11,7 +11,8 @@ import os
 import h5py
 import numpy as np
 import argparse
-from typing import Dict, Any, Optional
+from typing import Dict, Any
+import ikc
 
 
 def load_metadata(metadata_file: str) -> Dict[str, Dict[str, str]]:
@@ -188,6 +189,9 @@ def main():
     metadata_file = os.path.join(data_dir, 'metadata/oc_mini_node_metadata.csv')
     hierarchy_file = os.path.join(data_dir, 'clustering/oc_mini_paris_rebalanced.json')
     embeddings_file = os.path.join(data_dir, 'clustering/oc_mini_paris_embeddings.h5')
+    ikc_file = os.path.join(data_dir, 'clustering/oc_mini_ikc.csv')
+    network_file = os.path.join(data_dir, 'network/oc_mini_edgelist.csv')
+    network_file_tsv = os.path.join(data_dir, 'network/oc_mini_edgelist.tsv')
 
     verbose = not args.quiet
 
@@ -235,6 +239,31 @@ def main():
         print(f"\nWarning: No metadata found for node name '{node_name}'")
     print("="*60)
 
+    # Load IKC and network data
+    if verbose:
+        print("\nLoading IKC and network data...")
+    g = ikc.load_graph(network_file_tsv)
+    kcore = g.compute_kcore_decomposition()
+
+    if verbose:
+        print(f"  Loaded graph with {g.num_nodes} nodes, {g.num_edges} edges")
+        print(f"  Computed IKC clusters: {len(kcore)} clusters found")
+        print("  Finding maximal k-core for final node...")
+
+    community = g.find_maximal_kcore(int(final_node['id']), core_numbers=kcore.core_numbers)
+    
+    # print(community)
+    if community:
+        print(f"\nCommunity for node {final_node['id']} (k={community['k']}):")
+        print(f"  Number of nodes in community: {len(community['nodes'])}")
+        print("  Saving community to 'fetched_community.json'...")
+        with open('fetched_community.json', 'w') as f:
+            json.dump({
+                'k': community['k'],
+                'nodes': community['nodes']
+            }, f, indent=2)
+    else: 
+        print(f"\nNo community found for node {final_node['id']}.")
 
 if __name__ == "__main__":
     main()
