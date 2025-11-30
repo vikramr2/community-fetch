@@ -244,7 +244,7 @@ def main():
 
     # Input files
     metadata_file = os.path.join(data_dir, 'metadata/oc_mini_node_metadata.csv')
-    hierarchy_file = os.path.join(data_dir, 'clustering/oc_mini_paris.json')
+    hierarchy_file = os.path.join(data_dir, 'clustering/oc_mini_paris_rebalanced.json')
 
     # Output files
     output_h5 = os.path.join(data_dir, 'clustering/oc_mini_paris_embeddings.h5')
@@ -277,7 +277,7 @@ def main():
     save_embeddings_hdf5(all_embeddings, output_h5, hierarchy_data)
 
     # Optionally save to JSON (can be slow for large datasets)
-    save_json = input("\nSave embeddings to JSON format as well? (y/n): ").lower().strip() == 'y'
+    save_json = False #input("\nSave embeddings to JSON format as well? (y/n): ").lower().strip() == 'y'
     if save_json:
         save_embeddings_json(all_embeddings, output_json, hierarchy_data)
 
