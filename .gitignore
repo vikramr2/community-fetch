@@ -1,3 +1,10 @@
+*_slurm.sh
+
+# Output files
+*.out
+*.log
+*.err
+
 data
 
 # Byte-compiled / optimized / DLL files
