@@ -317,6 +317,12 @@ def main():
         os.remove(temp_cluster_file)
         system('rm wcc_output*')
 
+    # Set the centeal_node as the final_node
+    if community:
+        community['central_node'] = {
+            'id': final_node['id'],
+            'name': final_node.get('name', '')
+        }
 
     # print(community)
     if community:
@@ -326,7 +332,8 @@ def main():
         with open('fetched_community.json', 'w') as f:
             json.dump({
                 'k': community['k'],
-                'nodes': community['nodes']
+                'nodes': community['nodes'],
+                'central_node': community['central_node']
             }, f, indent=2)
     else: 
         print(f"\nNo community found for node {final_node['id']}.")

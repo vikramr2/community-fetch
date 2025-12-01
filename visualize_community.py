@@ -122,7 +122,8 @@ def visualize_community(
     embeddings: Dict[int, np.ndarray],
     metadata: Dict[str, Dict[str, str]],
     query_text: str = "",
-    output_file: str = "community_network.html"
+    output_file: str = "community_network.html",
+    verbose: bool = False
 ) -> go.Figure:
     """
     Create a force-directed network visualization of the community.
@@ -158,17 +159,38 @@ def visualize_community(
 
     # Compute cosine similarities for all nodes in community
     similarities = {}
-    log_similarities = {}
+    scaled_similarities = {}
     for node_id in community_nodes:
         if node_id in embeddings:
             node_embedding = embeddings[node_id]
             sim = cosine_similarity(query_embedding, node_embedding)
             similarities[node_id] = sim
-            # Use log scale for better color distribution
-            log_similarities[node_id] = np.log10(sim + 1e-10)  # Add small epsilon to avoid log(0)
         else:
             similarities[node_id] = 0.0
-            log_similarities[node_id] = -10.0
+
+    # Scale similarities for better visualization
+    sim_values = list(similarities.values())
+    min_sim = min(sim_values)
+    max_sim = max(sim_values)
+
+    if verbose:
+        print(f"\n  Similarity range: [{min_sim:.4f}, {max_sim:.4f}]")
+        print(f"  Mean similarity: {np.mean(sim_values):.4f}")
+        print(f"  Median similarity: {np.median(sim_values):.4f}")
+
+    # Use rank-based coloring for better distribution across the color spectrum
+    # Sort nodes by similarity and assign colors based on rank
+    sorted_nodes = sorted(similarities.items(), key=lambda x: x[1])
+
+    for rank, (node_id, sim) in enumerate(sorted_nodes):
+        # Normalize rank to 0-1 range
+        scaled_similarities[node_id] = rank / max(1, len(sorted_nodes) - 1)
+
+    if verbose:
+        print(f"  Using rank-based coloring")
+        print(f"  Lowest similarity node: {sorted_nodes[0][1]:.4f}")
+        print(f"  Median similarity node: {sorted_nodes[len(sorted_nodes)//2][1]:.4f}")
+        print(f"  Highest similarity node: {sorted_nodes[-1][1]:.4f}")
 
     # Prepare edge trace
     edge_x = []
@@ -187,16 +209,27 @@ def visualize_community(
         mode='lines'
     )
 
-    # Prepare node trace
-    node_x = []
-    node_y = []
-    node_text = []
-    node_color = []
+    # Get central node ID if available
+    central_node_id = None
+    if 'central_node' in community and 'name' in community['central_node']:
+        try:
+            central_node_id = int(community['central_node']['name'])
+        except (ValueError, TypeError):
+            pass
+
+    # Prepare node traces - separate regular nodes from central node
+    regular_node_x = []
+    regular_node_y = []
+    regular_node_text = []
+    regular_node_color = []
+
+    central_node_x = []
+    central_node_y = []
+    central_node_text = []
+    central_node_color = []
 
     for node_id in community_nodes:
         x, y = pos[node_id]
-        node_x.append(x)
-        node_y.append(y)
 
         # Get metadata
         node_id_str = str(node_id)
@@ -237,22 +270,43 @@ def visualize_community(
         title_wrapped = wrap_text(title, 50)
         abstract_wrapped = wrap_text(abstract, 50)
 
+        # Get rank from the scaled similarities (which is based on sorted position)
+        rank = int(scaled_similarities[node_id] * (len(community_nodes) - 1)) + 1
+        total = len(community_nodes)
+
+        # Mark central node in hover text
+        node_label = "QUERY PAPER" if node_id == central_node_id else ""
+        hover_prefix = f"<b>{node_label}</b><br>" if node_label else ""
+
         hover_text = (
+            f"{hover_prefix}"
             f"<b>Node ID:</b> {node_id}<br>"
             f"<b>Cosine Similarity:</b> {sim:.4f}<br>"
+            f"<b>Rank:</b> {rank}/{total}<br>"
             f"<b>Title:</b><br>{title_wrapped}<br>"
             f"<b>Abstract:</b><br>{abstract_wrapped}<br>"
             f"<b>DOI:</b> {doi}"
         )
-        node_text.append(hover_text)
-        node_color.append(log_similarities[node_id])
 
+        # Separate central node from regular nodes
+        if node_id == central_node_id:
+            central_node_x.append(x)
+            central_node_y.append(y)
+            central_node_text.append(hover_text)
+            central_node_color.append(scaled_similarities[node_id])
+        else:
+            regular_node_x.append(x)
+            regular_node_y.append(y)
+            regular_node_text.append(hover_text)
+            regular_node_color.append(scaled_similarities[node_id])
+
+    # Create regular nodes trace
     node_trace = go.Scatter(
-        x=node_x,
-        y=node_y,
+        x=regular_node_x,
+        y=regular_node_y,
         mode='markers',
         hoverinfo='text',
-        text=node_text,
+        text=regular_node_text,
         hoverlabel=dict(
             bgcolor="white",
             font_size=11,
@@ -263,11 +317,11 @@ def visualize_community(
         marker=dict(
             showscale=True,
             colorscale='Viridis',
-            color=node_color,
+            color=regular_node_color,
             size=10,
             colorbar=dict(
                 thickness=15,
-                title='log₁₀(Cosine Sim)',
+                title='Similarity Rank',
                 xanchor='left',
                 titleside='right'
             ),
@@ -275,58 +329,73 @@ def visualize_community(
         )
     )
 
+    # Create central node trace (star shape)
+    central_node_trace = go.Scatter(
+        x=central_node_x,
+        y=central_node_y,
+        mode='markers',
+        hoverinfo='text',
+        text=central_node_text,
+        hoverlabel=dict(
+            bgcolor="white",
+            font_size=11,
+            font_family="monospace",
+            align="left",
+            namelength=0
+        ),
+        marker=dict(
+            symbol='star',
+            size=20,
+            color=central_node_color,
+            colorscale='Viridis',
+            line=dict(color='red', width=3),
+            showscale=False
+        )
+    )
+
     # Create annotations list
     annotations = []
 
-    # Add query text at the top if provided
-    if query_text:
-        query_display = query_text[:100] + '...' if len(query_text) > 100 else query_text
-        annotations.append(
-            dict(
-                text=f"<b>Query:</b> {query_display}",
-                showarrow=False,
-                xref="paper",
-                yref="paper",
-                x=0.5,
-                y=1.05,
-                xanchor='center',
-                yanchor='bottom',
-                font=dict(size=12)
-            )
-        )
+    # Prepare query display (truncate if too long)
+    query_display = query_text[:80] + '...' if len(query_text) > 80 else query_text
 
     # Add bottom annotation about colors
     annotations.append(
         dict(
-            text="Node colors represent log₁₀(cosine similarity) to query embedding",
+            text=f"Node colors: similarity range [{min_sim:.3f}, {max_sim:.3f}] (rank-based)",
             showarrow=False,
             xref="paper",
             yref="paper",
             x=0.5,
-            y=-0.05,
+            y=-0.04,
             xanchor='center',
             yanchor='top',
-            font=dict(size=12)
+            font=dict(size=10, color='#666666', family='Arial')
         )
     )
 
-    # Create figure
+    # Create figure - add central node trace if it exists
+    traces = [edge_trace, node_trace]
+    if central_node_x:
+        traces.append(central_node_trace)
+
     fig = go.Figure(
-        data=[edge_trace, node_trace],
+        data=traces,
         layout=go.Layout(
             title=dict(
-                text=f'K-Core Community (k={k_value}, size={len(community["nodes"])})',
+                text=f'<i>Query: {query_display}</i><br><b>K-Core Community</b><br><sub>k = {k_value} | {len(community["nodes"])} nodes</sub>',
                 x=0.5,
-                xanchor='center'
+                xanchor='center',
+                font=dict(size=16, family='Arial', color='#333333')
             ),
-            titlefont_size=16,
             showlegend=False,
             hovermode='closest',
-            margin=dict(b=20, l=5, r=5, t=60),
+            margin=dict(b=30, l=10, r=10, t=120),
             annotations=annotations,
             xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
             yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            plot_bgcolor='white'
+            plot_bgcolor='#FAFAFA',
+            paper_bgcolor='white'
         )
     )
 
@@ -391,7 +460,8 @@ def main():
         embeddings=embeddings,
         metadata=metadata,
         query_text=args.query,
-        output_file=args.output
+        output_file=args.output,
+        verbose=True
     )
 
     print(f"\nDone! Open {args.output} in a browser to view the network.")
