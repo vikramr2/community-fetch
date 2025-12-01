@@ -6,7 +6,7 @@ A hierarchical retrieval system combining Paris clustering and k-core community 
 
 The system uses a two-stage approach for semantic search:
 
-1. **Hierarchical Search**: A Paris clustering tree organizes papers hierarchically based on citation structure. Given a query, we embed it using MedCPT and navigate down the tree by selecting the child with highest cosine similarity at each level until reaching a leaf node.
+1. **Hierarchical Search**: A Paris clustering tree organizes papers hierarchically based on citation structure. Leaves are embedded with MedCPT and embeddings are averaged upward through the internal nodes. Given a query, we embed it using MedCPT and navigate down the tree by selecting the child with highest cosine similarity at each level until reaching a leaf node.
 
 2. **Community Detection**: From the retrieved leaf node, we extract its k-core community using IKC (Iterative K-Core) decomposition. This finds the maximal densely-connected subgraph containing the target paper, representing related work in the same research area.
 
@@ -56,3 +56,4 @@ Optional flags:
 - **MedCPT**: Jin et al. (2023). "MedCPT: Contrastive Pre-trained Transformers with large-scale PubMed search logs for zero-shot biomedical information retrieval." [ncbi/MedCPT-Query-Encoder](https://huggingface.co/ncbi/MedCPT-Query-Encoder)
 - **Paris Clustering**: Bonald et al. (2018). "Hierarchical Graph Clustering using Node Pair Sampling."
 - **IKC**: Wedell et al. (2022). "Center–periphery structure in research communities."
+- **WCC**: Park et. al. (2024). "Improved community detection using stochastic block models."
