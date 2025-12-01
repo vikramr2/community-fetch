@@ -51,6 +51,10 @@ Optional flags:
 - `--output`: Output HTML file (default: `community_network.html`)
 - `--data-dir`: Data directory (default: `data/`)
 
+### Visualization Screenshot
+
+![Viz](assets/viz.jpeg)
+
 ## References
 
 - **MedCPT**: Jin et al. (2023). "MedCPT: Contrastive Pre-trained Transformers with large-scale PubMed search logs for zero-shot biomedical information retrieval." [ncbi/MedCPT-Query-Encoder](https://huggingface.co/ncbi/MedCPT-Query-Encoder)
